@@ -1,13 +1,9 @@
-import asyncio
-import logging
 import os
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from aiogram.filters import CommandStart
-
-logging.basicConfig(level=logging.INFO)
+import telebot
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8670581466:AAFUkWwvSK37CsGBnzBGHSpjZ_C0HVhREu8")
+bot = telebot.TeleBot(BOT_TOKEN)
 
 EMPLOYEES = [
     {"name": "Mirzahit",  "phone": "87479069426",  "login": "office@salesdoc.io", "pass": "admin"},
@@ -19,45 +15,44 @@ EMPLOYEES = [
     {"name": "Aurika",    "phone": "",             "login": "aurika",             "pass": "1234"},
 ]
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+def normalize(phone):
+    d = "".join(filter(str.isdigit, str(phone)))
+    if d.startswith("8"):
+        d = "7" + d[1:]
+    return d
 
-def normalize_phone(phone):
-    digits = "".join(filter(str.isdigit, phone))
-    if digits.startswith("8"):
-        digits = "7" + digits[1:]
-    return digits
-
-def find_employee(phone):
-    normalized = normalize_phone(phone)
-    for emp in EMPLOYEES:
-        if emp["phone"] and normalize_phone(emp["phone"]) == normalized:
-            return emp
+def find_emp(phone):
+    n = normalize(phone)
+    for e in EMPLOYEES:
+        if e["phone"] and normalize(e["phone"]) == n:
+            return e
     return None
 
-@dp.message(CommandStart())
-async def start(message: Message):
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Share number", request_contact=True)]],
-        resize_keyboard=True, one_time_keyboard=True
-    )
-    await message.answer("SalesDoc Finance Portal - password recovery.\nPress button to share your phone.", reply_markup=kb)
+def share_kb():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("Share number", request_contact=True))
+    return kb
 
-@dp.message(F.contact)
-async def handle_contact(message: Message):
-    emp = find_employee(message.contact.phone_number)
+@bot.message_handler(commands=["start"])
+def start(msg):
+    bot.send_message(msg.chat.id,
+        "SalesDoc Finance Portal - password recovery.\nPress button to share your phone.",
+        reply_markup=share_kb())
+
+@bot.message_handler(content_types=["contact"])
+def contact(msg):
+    emp = find_emp(msg.contact.phone_number)
     if emp:
-        await message.answer(f"Found!\nLogin: {emp['login']}\nPassword: {emp['pass']}", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(msg.chat.id,
+            f"Found!\nLogin: {emp['login']}\nPassword: {emp['pass']}",
+            reply_markup=ReplyKeyboardRemove())
     else:
-        await message.answer("Not found. Contact: @Salesdockzkg", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(msg.chat.id,
+            "Not found. Contact: @Salesdockzkg",
+            reply_markup=ReplyKeyboardRemove())
 
-@dp.message()
-async def fallback(message: Message):
-    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Share number", request_contact=True)]], resize_keyboard=True, one_time_keyboard=True)
-    await message.answer("Press button below", reply_markup=kb)
+@bot.message_handler(func=lambda m: True)
+def fallback(msg):
+    bot.send_message(msg.chat.id, "Press button below", reply_markup=share_kb())
 
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+bot.polling(none_stop=True)
